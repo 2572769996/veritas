@@ -37,6 +37,14 @@ fn on_damage(
     EGBIFEKHNIC: *const c_void,
 ) -> bool {
     log::debug!(function_name!());
+
+    let hp_initial = match defender_ability.get_property(RPG_GameCore_AbilityProperty::CurrentHP) {
+        Ok(value) => value,
+        Err(e) => {
+            log::error!("{} HP initial error: {}", function_name!(), e);
+            RPG_GameCore_FixPoint { m_rawValue: 0 }
+        }
+    };
     let res = ON_DAMAGE_Detour.call(
         task_context,
         damage_by_attack_property,
@@ -49,12 +57,28 @@ fn on_damage(
         flag,
         EGBIFEKHNIC,
     );
+    let hp_final = match defender_ability.get_property(RPG_GameCore_AbilityProperty::CurrentHP) {
+        Ok(value) => value,
+        Err(e) => {
+            log::error!("{} HP final error: {}", function_name!(), e);
+            RPG_GameCore_FixPoint { m_rawValue: 0 }
+        }
+    };
 
     safe_call!(unsafe {
         let mut event: Option<Result<Event>> = None;
         match attacker._Team()? {
             RPG_GameCore_TeamType::TeamLight => {
                 let damage = fixpoint_to_raw(&kcekdanaofi.JNMNJBHALMO()?);
+                let hp_initial_raw = fixpoint_to_raw(&hp_initial);
+                let hp_final_raw = fixpoint_to_raw(&hp_final);
+                let overkill_damage = if hp_initial_raw <= 0.0 {
+                    damage
+                } else if hp_final_raw <= 0.0 {
+                    (damage - hp_initial_raw).max(0.0)
+                } else {
+                    0.0
+                };
                 let damage_type = kcekdanaofi.IDFIOBDMLFF()?;
                 let attack_owner = {
                     let attack_owner = RPG_GameCore_AbilityStatic::get_actual_owner(attacker)?;
@@ -75,6 +99,7 @@ fn on_damage(
                                 },
                                 damage,
                                 damage_type: damage_type as isize,
+                                overkill_damage,
                             })),
                             Err(e) => {
                                 log::error!("Avatar Event Error: {}", e);
@@ -92,6 +117,7 @@ fn on_damage(
                                 },
                                 damage,
                                 damage_type: damage_type as isize,
+                                overkill_damage,
                             })),
                             Err(e) => {
                                 log::error!("Servant Event Error: {}", e);
@@ -112,6 +138,7 @@ fn on_damage(
                                 },
                                 damage,
                                 damage_type: damage_type as isize,
+                                overkill_damage,
                             })),
                             Err(e) => {
                                 log::error!("Snapshot Event Error: {}", e);
@@ -1426,6 +1453,7 @@ pub fn subscribe() -> Result<()> {
                 .va(),
             on_damage
         )?;
+        
         subscribe_function!(
             ON_COMBO_Detour,
             MAJMDHFBJAB::get_class()?
